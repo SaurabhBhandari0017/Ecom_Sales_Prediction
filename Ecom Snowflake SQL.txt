@@ -1,0 +1,157 @@
+CREATE DATABASE ECOM;
+
+USE ECOM;
+
+SHOW WAREHOUSES;
+
+SELECT *
+FROM CUST_ORD;
+
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+
+-- Sales Performance:
+-- What are the total revenue, total orders, and total quantity sold for each category?
+
+SELECT
+"category",
+SUM("total_amt") AS total_revenue,
+COUNT(DISTINCT "order_id") AS total_orders,
+SUM("quantity") AS total_quantity
+FROM CUST_ORD
+GROUP BY "category"
+ORDER BY total_orders DESC;
+
+
+-- Top Products:
+-- Find the top 5 products by total revenue.
+
+SELECT
+"product_id",
+"product_name",
+SUM("total_amt") AS total_revenue
+FROM CUST_ORD
+GROUP BY "product_id", "product_name"
+ORDER BY total_revenue DESC
+LIMIT 5;
+
+
+-- Customer Analysis:
+-- Find the top 10 customers based on total spending.
+
+SELECT
+"customer_id",
+"full_name" AS "name",
+SUM("total_amt") AS total_spending
+FROM CUST_ORD
+GROUP BY "customer_id", "name"
+ORDER BY total_spending DESC
+LIMIT 10; 
+
+
+-- Monthly Trend:
+-- Calculate monthly revenue and identify how revenue changes month by month.
+
+WITH MONTHLY_REV AS(
+SELECT 
+EXTRACT(MONTH FROM TO_DATE(TO_TIMESTAMP("order_date" / 1000000000))) AS month,
+SUM("total_amt") AS monthly_revenue
+FROM CUST_ORD
+GROUP BY month
+)
+SELECT
+month,
+monthly_revenue,
+LAG(monthly_revenue) OVER(ORDER BY month) AS pre_month_rev,
+monthly_revenue - LAG(monthly_revenue) OVER(ORDER BY month) AS revenue_change
+FROM MONTHLY_REV
+ORDER BY month;
+
+
+-- Customer Behavior:
+-- Find customers who have placed more than 3 orders.
+
+SELECT
+"customer_id",
+COUNT(DISTINCT "order_id") AS total_orders
+FROM CUST_ORD
+GROUP BY "customer_id"
+HAVING COUNT(DISTINCT "order_id") > 3
+ORDER BY total_orders DESC;
+
+
+-- Product Performance:
+-- Find the top 3 products by revenue within each category.
+
+WITH PRODUCT_REV AS (
+SELECT
+"product_name",
+"category",
+SUM("total_amt") AS total_revenue
+FROM CUST_ORD
+GROUP BY "product_name","category"
+),
+RANK_PRODUCTS AS (
+SELECT
+"product_name",
+"category",
+total_revenue,
+RANK() OVER(PARTITION BY "category" ORDER BY total_revenue DESC) AS Rnk
+FROM PRODUCT_REV
+)
+SELECT
+* FROM RANK_PRODUCTS
+WHERE Rnk < 4;
+
+
+-- Payment Analysis:
+-- Calculate the number of orders, total revenue, and average order value for each payment method.
+
+SELECT
+"payment_method",
+COUNT(DISTINCT "order_id") AS total_orders,
+SUM("total_amt") AS total_revenue,
+SUM("total_amt") / COUNT(DISTINCT "order_id") AS aov
+FROM CUST_ORD
+GROUP BY "payment_method"
+ORDER BY total_orders;
+
+
+-- Customer Retention:
+-- Find customers who made their first purchase and then made at least one additional purchase.
+
+SELECT
+"customer_id",
+COUNT(DISTINCT "order_id") AS total_orders
+FROM CUST_ORD
+GROUP BY "customer_id"
+HAVING COUNT(DISTINCT "order_id") >=2
+ORDER BY total_orders DESC;
+
+
+-- Rating vs Sales:
+-- Find products having an average rating ≥ 4 but total quantity sold below the overall average quantity.
+
+WITH PRO_SUM AS (
+    SELECT
+    "product_name",
+    ROUND(AVG("rating")) AS avg_rating,
+    SUM("quantity") AS total_qty
+    FROM CUST_ORD
+    GROUP BY "product_name"
+),
+AVG_QTY AS ( 
+    SELECT
+    AVG(total_qty) AS avg_qty
+    FROM PRO_SUM
+)
+    SELECT
+    PS."product_name",
+    PS.avg_rating,
+    PS.total_qty
+    FROM PRO_SUM AS PS
+    CROSS JOIN AVG_QTY AS AQ
+    WHERE PS.avg_rating >= 2
+    AND PS.total_qty < AQ.avg_qty
+    ORDER BY PS.total_qty DESC;
+
